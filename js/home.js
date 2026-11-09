@@ -1,6 +1,7 @@
-const d=S.load(),f=$('#feat');
-const draw=()=>f.innerHTML=d.places.filter(p=>S.visible(p)).slice(0,4).map(p=>placeCard(p,d)).join('');
-draw();bindSave(f,d,draw);
-$('#sf').addEventListener('submit',e=>{e.preventDefault();location.href='explore.html?q='+encodeURIComponent($('#q').value.trim())});
-// Hero video (e.g. a Higgsfield clip): drop it at assets/hero.mp4 and it plays; otherwise the plain green hero stays.
-const v=$('#hv');v.src=S.media.heroVideo;v.addEventListener('error',()=>v.remove());
+(async()=>{const f=$('#feat');let list=[],saved=new Set();
+  const v=$('#hv');v.src=S.media.heroVideo;v.addEventListener('error',()=>v.remove());   // optional hero clip
+  $('#sf').addEventListener('submit',e=>{e.preventDefault();location.href='explore.html?q='+encodeURIComponent($('#q').value.trim())});
+  try{[list,saved]=await Promise.all([DB.places(),DB.savedIds()])}catch(e){f.innerHTML='<p class="muted">'+esc(DB.msg(e))+'</p>';return}
+  list=list.filter(S.visible).slice(0,4);
+  const draw=()=>f.innerHTML=list.length?list.map(p=>placeCard(p,saved)).join(''):'<p class="muted">No places yet. Check back soon.</p>';
+  draw();bindSave(f,saved,draw)})();
