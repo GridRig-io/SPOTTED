@@ -1,0 +1,14 @@
+{
+  "cli": { "version": ">= 16.0.0" },
+  "build": {
+    "base": {
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://xdczoryoeidjhvqmzlwd.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_S36gvb6rGlFze8NP0aJ6bA_SYPtQt-W",
+        "EXPO_PUBLIC_API_URL": "https://spotted-gules.vercel.app"
+      }
+    },
+    "preview": { "extends": "base", "distribution": "internal", "android": { "buildType": "apk" } },
+    "production": { "extends": "base", "autoIncrement": true }
+  }
+}

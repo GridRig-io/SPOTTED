@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "Spotted",
+    "slug": "spotted",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "spotted",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FAF5E9",
+    "ios": {
+      "bundleIdentifier": "ng.spotted.app",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "ng.spotted.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#14442F",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "output": "single",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-web-browser",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#14442F",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 96
+        }
+      ]
+    ],
+    "experiments": {
+      "reactCompiler": true
+    }
+  }
+}

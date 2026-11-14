@@ -1,0 +1,25 @@
+{
+  "name": "spotted",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Spotted. Places worth staying. One repo: Expo app (iOS and Android), Next.js website, shared brand and data packages.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "web": "npm run env && npm run dev -w @spotted/web",
+    "web:build": "npm run build -w @spotted/web",
+    "mobile": "npm run start -w apps/mobile",
+    "android": "npm run android -w apps/mobile",
+    "ios": "npm run ios -w apps/mobile",
+    "typecheck": "npm run typecheck -w packages/tokens && npm run typecheck -w packages/core && npm run typecheck -w apps/web && npm run typecheck -w apps/mobile",
+    "env": "node scripts/sync-env.mjs",
+    "test": "tsx --test packages/core/test/*.test.ts packages/tokens/test/*.test.ts && node supabase/test/run-migrations.mjs",
+    "gen:sql": "node --experimental-strip-types --no-warnings supabase/scripts/gen-reference.mjs && node --experimental-strip-types --no-warnings supabase/scripts/gen-demo.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
+    "tsx": "^4.23.15"
+  }
+}
