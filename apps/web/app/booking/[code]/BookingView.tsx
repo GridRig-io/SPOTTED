@@ -2,7 +2,9 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { cancelBooking, formatNaira, formatRange, formatTime, getBooking, getPrivateDetails, plural, todayInLagos, type BookingWithPlace, type PrivateDetails } from "@spotted/core";
+import { POLICIES, cancelBooking, formatDay, formatNaira, formatRange, formatTime, freeCancelUntil, getBooking, getPrivateDetails, plural, refundableToday, todayInLagos, type BookingWithPlace, type PrivateDetails } from "@spotted/core";
+import { Directions } from "@/components/Directions";
+import { Sheet } from "@/components/Sheet";
 import { useAuth } from "@/components/AuthProvider";
 import { Icon } from "@/components/Icon";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -21,6 +23,8 @@ function Inner({ code }: { code: string }) {
   const [priv, setPriv] = useState<PrivateDetails | null>(null);
   const [checking, setChecking] = useState(returned);
   const [err, setErr] = useState("");
+  const [asking, setAsking] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const load = useCallback(async () => {
     if (!db) return;
@@ -57,6 +61,7 @@ function Inner({ code }: { code: string }) {
   const confirmed = b.status === "confirmed" || b.status === "completed";
   const today = todayInLagos();
   const upcoming = b.check_in > today;
+  const refundable = b.property ? refundableToday(b.property.cancellation_policy ?? "moderate", b.check_in, today) : false;
 
   return (
     <div className="container section stack gap-6" style={{ maxWidth: 760 }}>
@@ -85,29 +90,42 @@ function Inner({ code }: { code: string }) {
         <div className="total-line bold" style={{ borderTop: "1px solid var(--c-line)", paddingTop: 12 }}><span>Total {confirmed ? "paid" : ""}</span><span>{formatNaira(b.total_ngn)}</span></div>
       </div>
 
-      {confirmed ? (
-        <div className="card pad stack gap-3">
-          <h3>Getting in</h3>
-          {priv ? (
-            <div className="stack gap-3">
-              {priv.street_address ? <p className="row gap-2"><Icon name="map-pin" size={18} /> {priv.street_address}</p> : null}
-              {priv.gate_instructions ? <p className="row gap-2"><Icon name="door-closed" size={18} /> {priv.gate_instructions}</p> : null}
-              {priv.wifi_name ? <p className="row gap-2"><Icon name="wifi" size={18} /> {priv.wifi_name}{priv.wifi_password ? ` · password ${priv.wifi_password}` : ""}</p> : null}
-              {priv.host_phone ? <p className="row gap-2"><Icon name="message-circle" size={18} /> Host: <a className="bold" href={`tel:${priv.host_phone}`}>{priv.host_phone}</a></p> : null}
-            </div>
-          ) : (
-            <p className="muted">{upcoming ? "The exact address, gate instructions and wifi password appear here from the day before your stay. We keep them private until then." : "Details are not available."}</p>
-          )}
+      {confirmed ? (priv ? <Directions priv={priv} name={b.property?.name ?? "the place"} /> : (
+        <div className="card pad stack gap-2">
+          <h3>Getting there</h3>
+          <p className="muted">{upcoming ? `From ${formatDay(addDayBefore(b.check_in))}, this page shows the exact pin, the street address, a landmark, gate notes, wifi and a Get directions button. We keep them private until then.` : "Details are not available."}</p>
+          {b.property?.lat !== null && b.property?.lat !== undefined ? <p className="small muted">Rough area: {b.property.area?.name}{b.property.area_hint ? `, ${b.property.area_hint}` : ""}.</p> : null}
+        </div>
+      )) : null}
+
+      {b.property ? (
+        <div className="card pad stack gap-2" id="policy">
+          <h3>Cancellation · {POLICIES[b.property.cancellation_policy ?? "moderate"].label}</h3>
+          <p className="muted">{POLICIES[b.property.cancellation_policy ?? "moderate"].long}</p>
+          {(b.status === "confirmed" && upcoming) ? (
+            <p className="small" style={{ color: refundable ? "var(--c-forest)" : "var(--c-red)" }}><b>{refundable ? `Free cancellation until ${formatDay(freeCancelUntil(b.property.cancellation_policy ?? "moderate", b.check_in))}.` : "If you cancel now, this stay is not refunded."}</b></p>
+          ) : null}
         </div>
       ) : null}
 
       {(b.status === "confirmed" && upcoming) ? (
-        <button className="btn btn-quiet" style={{ alignSelf: "flex-start" }} onClick={async () => {
-          if (!db || !confirm("Cancel this booking? Refunds follow the host's cancellation terms.")) return;
-          try { await cancelBooking(db, code); await load(); } catch (e) { setErr(e instanceof Error ? e.message : "Could not cancel."); }
-        }}>Cancel booking</button>
+        <button className="btn btn-quiet" style={{ alignSelf: "flex-start" }} onClick={() => setAsking(true)}>Cancel booking</button>
       ) : null}
+      <Sheet open={asking} onClose={() => setAsking(false)} title="Cancel this booking?"
+        footer={<div className="row gap-3"><button type="button" className="btn btn-quiet grow" onClick={() => setAsking(false)}>Keep booking</button>
+          <button type="button" className="btn grow" style={{ background: "var(--c-red)" }} disabled={cancelling} onClick={async () => {
+            if (!db) return; setCancelling(true);
+            try { await cancelBooking(db, code); setAsking(false); await load(); } catch (e) { setErr(e instanceof Error ? e.message : "Could not cancel."); setAsking(false); }
+            setCancelling(false);
+          }}>{cancelling ? "Cancelling…" : `Cancel ${b.code}`}</button></div>}>
+        <p>{refundable ? <>You will get a <b>full refund of {formatNaira(b.total_ngn)}</b>. Refunds go back to the card or account you paid with, usually within 5 to 10 working days.</> : <>This is past the free cancellation date, so <b>the {formatNaira(b.total_ngn)} is not refunded</b>. You can still cancel to free the dates.</>}</p>
+      </Sheet>
       <Link href="/trips" className="strong" style={{ color: "var(--c-forest)" }}>See all your trips</Link>
     </div>
   );
+}
+
+function addDayBefore(day: string) {
+  const d = new Date(`${day}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
 }

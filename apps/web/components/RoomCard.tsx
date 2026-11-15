@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { glanceFor } from "@spotted/tokens";
-import { formatNaira, ROOM_KIND_LABEL, PROPERTY_KIND_LABEL, plural, type RoomCard as RoomCardT } from "@spotted/core";
+import { formatNaira, nightsBetween, ROOM_KIND_LABEL, PROPERTY_KIND_LABEL, plural, stayTotal, type RoomCard as RoomCardT } from "@spotted/core";
 import { Icon } from "./Icon";
 import { Photo } from "./Photo";
 import { SaveButton } from "./SaveButton";
@@ -24,7 +24,8 @@ export function GlancePills({ amenities }: { amenities: RoomCardT["amenities"] }
   );
 }
 
-export function RoomCard({ card, query = "" }: { card: RoomCardT; query?: string }) {
+export function RoomCard({ card, query = "", checkIn, checkOut, distance }: { card: RoomCardT; query?: string; checkIn?: string; checkOut?: string; distance?: string }) {
+  const nights = checkIn && checkOut ? nightsBetween(checkIn, checkOut) : 0;
   const href = `/place/${card.property_slug}?room=${card.room_id}${query ? "&" + query.replace(/^\?/, "") : ""}`;
   return (
     <article className="rc">
@@ -47,9 +48,14 @@ export function RoomCard({ card, query = "" }: { card: RoomCardT; query?: string
         <p className="small muted">
           {ROOM_KIND_LABEL[card.room_kind]} · {PROPERTY_KIND_LABEL[card.property_kind]} · {card.area_name}
           {card.rooms_in_property > 1 ? ` · ${plural(card.rooms_in_property, "room")} here` : ""}
+          {distance ? <> · <span className="strong" style={{ color: "var(--c-forest)" }}>{distance}</span></> : null}
         </p>
         <GlancePills amenities={card.amenities} />
-        <p className="price"><b>{formatNaira(card.price_per_night)}</b> <span className="muted small">a night · sleeps {card.max_guests}</span></p>
+        {nights > 0 ? (
+          <p className="price"><b>{formatNaira(stayTotal(card, nights))}</b> <span className="muted small">for {plural(nights, "night")} · {formatNaira(card.price_per_night)} a night{card.cleaning_fee ? " + cleaning" : ""}</span></p>
+        ) : (
+          <p className="price"><b>{formatNaira(card.price_per_night)}</b> <span className="muted small">a night · sleeps {card.max_guests}</span></p>
+        )}
       </Link>
     </article>
   );

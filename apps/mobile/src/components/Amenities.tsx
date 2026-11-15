@@ -84,3 +84,17 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 9, borderTopWidth: 1, borderTopColor: colors.line },
   state: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: radii.pill },
 });
+
+/** Same as the website: what costs extra and what is not offered, then the full list one tap away. */
+export function AmenityExceptions({ rows }: { rows: RoomAmenityRow[] }) {
+  const paid = rows.filter((r) => r.state === "paid");
+  const off = rows.filter((r) => (r.state ?? "not_offered") === "not_offered");
+  const included = rows.length - paid.length - off.length;
+  return (
+    <View style={{ backgroundColor: colors.cream2, borderRadius: 14, padding: 14, gap: 8 }}>
+      <View style={{ flexDirection: "row", gap: 8 }}><Icon name="circle-check" size={18} color={colors.forest} /><Text v="small" style={{ flex: 1 }}><Text v="smallStrong">{included} of {rows.length}</Text> included in the price</Text></View>
+      {paid.length ? <View style={{ flexDirection: "row", gap: 8 }}><Icon name="plus" size={18} color={colors.orange} /><Text v="small" style={{ flex: 1 }}><Text v="smallStrong">Costs extra: </Text>{paid.map((r) => `${r.label}${r.extra_cost_ngn ? ` (${formatNaira(r.extra_cost_ngn)})` : ""}`).join(", ")}</Text></View> : null}
+      {off.length ? <View style={{ flexDirection: "row", gap: 8 }}><Icon name="ban" size={18} color={colors.muted} /><Text v="small" style={{ flex: 1 }}><Text v="smallStrong">Not offered: </Text>{off.map((r) => r.label).join(", ")}</Text></View> : null}
+    </View>
+  );
+}

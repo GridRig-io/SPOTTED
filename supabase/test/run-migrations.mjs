@@ -245,6 +245,101 @@ await test("unclaimed places are listed but cannot be booked (no rooms)", async 
   assert.equal((await as("anon", null, () => q(`select * from search_rooms()`))).length, 2);
 });
 
+// ───────── 0006 / 0007: hosts, review, blocks, policies, states, location ─────────
+const [{ id: h2 }] = await q(`insert into auth.users (email, raw_user_meta_data) values ('host2@x.ng', '{"full_name":"Chidi Nwosu"}') returning id`);
+const [{ id: adminU }] = await q(`insert into auth.users (email) values ('admin@x.ng') returning id`);
+await q(`update profiles set role='admin' where id=$1`, [adminU]);
+await test("become_host: checks the phone, makes the user an owner, keeps admins admin", async () => {
+  await fails(() => as("authenticated", h2, () => q(`select become_host('Chidi Nwosu', '0803', null)`)), /Nigerian phone/);
+  await as("authenticated", h2, () => q(`select become_host('Chidi Nwosu', '+2348031234567', 'Nwosu Stays')`));
+  const [p] = await q(`select role, business_name, host_since from profiles where id=$1`, [h2]);
+  assert.equal(p.role, "owner"); assert.equal(p.business_name, "Nwosu Stays"); assert.ok(p.host_since);
+  await as("authenticated", adminU, () => q(`select become_host('Ada Admin', '+2348000000001')`));
+  assert.equal((await q(`select role from profiles where id=$1`, [adminU]))[0].role, "admin");
+});
+const [{ id: lagosArea }] = await q(`select a.id from areas a join states s on s.id=a.state_id where s.slug='lagos' and a.slug='lekki'`);
+const hp = "11111111-1111-4111-8111-111111111111", hr = "22222222-2222-4222-8222-222222222222";
+await test("hosts create drafts; cannot fake demo, ratings, status or the public map spot", async () => {
+  await as("authenticated", h2, () => q(`insert into properties (id, owner_id, area_id, name, slug, status, is_demo, rating_avg, lat, lng, description)
+    values ($1,$2,$3,'Lekki Nest','lekki-nest','published',true,5,6.5,3.5,'A calm two-bed flat in Lekki Phase 1 with steady power and a borehole.')`, [hp, h2, lagosArea]));
+  const [p] = await q(`select status, is_demo, rating_avg, lat from properties where id=$1`, [hp]);
+  assert.equal(p.status, "draft"); assert.equal(p.is_demo, false); assert.equal(Number(p.rating_avg), 0); assert.equal(p.lat, null);
+  await fails(() => as("authenticated", h2, () => q(`update properties set status='published' where id=$1`, [hp])), /Spotted check/);
+  await fails(() => as("authenticated", h2, () => q(`update properties set lat=6.4 where id=$1`, [hp])), /managed by Spotted/);
+  await fails(() => as("authenticated", h2, () => q(`update properties set rating_count=99 where id=$1`, [hp])), /managed by Spotted/);
+});
+await test("host amenity answers are always marked as the host's own word", async () => {
+  await as("authenticated", h2, () => q(`insert into rooms (id, property_id, name, kind, price_per_night, max_guests) values ($1,$2,'Whole flat','whole_flat',80000,4)`, [hr, hp]));
+  for (const c of await q(`select key, scope from amenity_catalog`))
+    await as("authenticated", h2, () => q(`insert into amenity_answers (property_id, room_id, amenity_key, state, evidence) values ($1,$2,$3,'included','checked')`, [hp, c.scope === "room" ? hr : null, c.key]));
+  assert.equal((await q(`select count(*)::int n from amenity_answers where property_id=$1 and evidence <> 'declared'`, [hp]))[0].n, 0);
+});
+await test("submit for review needs address, phone and complete rooms", async () => {
+  await fails(() => as("authenticated", h2, () => q(`select submit_property($1)`, [hp])), /street address/);
+  await as("authenticated", h2, () => q(`insert into property_private (property_id, street_address, host_phone, lat, lng, landmark) values ($1,'4 Admiralty Way','+2348031234567',6.447812,3.473456,'Opposite the Total filling station')`, [hp]));
+  await fails(() => as("authenticated", h2, () => q(`select submit_property($1)`, [hp])), /at least 5 photos/);
+  for (let i = 0; i < 5; i++) await as("authenticated", h2, () => q(`insert into room_photos (property_id, room_id, url, position) values ($1,$2,$3,$4)`, [hp, hr, `https://img.test/h${i}.jpg`, i]));
+  await fails(() => as("authenticated", g1, () => q(`select submit_property($1)`, [hp])), /not found/);
+  const [p] = await as("authenticated", h2, () => q(`select * from submit_property($1)`, [hp]));
+  assert.equal(p.status, "pending_review");
+});
+await test("exact pin is private; the public map gets a rounded spot", async () => {
+  const [p] = await q(`select lat, lng from properties where id=$1`, [hp]);
+  assert.equal(Number(p.lat), 6.45); assert.equal(Number(p.lng), 3.47);
+  assert.equal((await as("authenticated", g1, () => q(`select * from property_private where property_id=$1`, [hp]))).length, 0);
+});
+await test("only a Spotted admin can publish; rejecting needs a note", async () => {
+  await fails(() => as("authenticated", h2, () => q(`select review_property($1, true)`, [hp])), /Only Spotted reviewers/);
+  await fails(() => as("authenticated", adminU, () => q(`select review_property($1, false, '')`, [hp])), /what to fix/);
+  await as("authenticated", adminU, () => q(`select review_property($1, false, 'Photo 3 is blurry')`, [hp]));
+  assert.equal((await q(`select status, review_note from properties where id=$1`, [hp]))[0].review_note, "Photo 3 is blurry");
+  await as("authenticated", h2, () => q(`select submit_property($1)`, [hp]));
+  const [p] = await as("authenticated", adminU, () => q(`select * from review_property($1, true)`, [hp]));
+  assert.equal(p.status, "published");
+});
+await test("states: search one state at a time; areas belong to a state", async () => {
+  const lagos = await as("anon", null, () => q(`select * from search_rooms(p_state => 'lagos')`));
+  assert.equal(lagos.length, 1); assert.equal(lagos[0].state_slug, "lagos"); assert.equal(lagos[0].cancellation_policy, "moderate");
+  const fct = await as("anon", null, () => q(`select * from search_rooms(p_state => 'fct')`));
+  assert.ok(fct.every((c) => c.state_slug === "fct"));
+  assert.ok((await q(`select count(*)::int n from areas where slug = 'enugu-other'`))[0].n === 1);
+});
+await test("nearest first puts the closest place on top", async () => {
+  const near = await as("anon", null, () => q(`select property_slug from search_rooms(p_sort => 'nearest', p_near_lat => 6.45, p_near_lng => 3.47)`));
+  assert.equal(near[0].property_slug, "lekki-nest");
+});
+await test("host date blocks close dates for guests (whole-flat rule too) and stay private", async () => {
+  await as("authenticated", h2, () => q(`insert into room_blocks (room_id, property_id, start_date, end_date, note) values ($1,$2,$3,$4,'Family visiting')`, [hr, hp, D(40), D(43)]));
+  const [qt] = await as("authenticated", g1, () => q(`select quote_stay($1,$2,$3,1) as v`, [hr, D(41), D(42)]));
+  assert.equal(qt.v.available, false);
+  const ranges = await as("anon", null, () => q(`select * from room_blocked_ranges($1)`, [hr]));
+  assert.ok(ranges.length >= 1);
+  assert.equal((await as("authenticated", g1, () => q(`select * from room_blocks`))).length, 0);
+  await fails(() => as("authenticated", g1, () => q(`insert into room_blocks (room_id, property_id, start_date, end_date) values ($1,$2,$3,$4)`, [hr, hp, D(50), D(51)])), /row-level security/);
+  await fails(() => as("authenticated", h2, () => q(`insert into room_blocks (room_id, property_id, start_date, end_date) values ($1,$2,$3,$4)`, [flat, hp, D(50), D(51)])), /does not belong/);
+});
+await test("host sees their bookings with guest first name; phone only once confirmed", async () => {
+  const [b] = await as("authenticated", g1, () => q(`select * from create_booking($1,$2,$3,2)`, [hr, D(60), D(62)]));
+  let rows = await as("authenticated", h2, () => q(`select * from host_bookings()`));
+  assert.equal(rows.length, 1); assert.equal(rows[0].guest_first_name, "Tunde"); assert.equal(rows[0].guest_phone, null);
+  assert.equal((await as("authenticated", owner, () => q(`select * from host_bookings() where property_id=$1`, [hp]))).length, 0);
+  const [host] = await as("anon", null, () => q(`select * from property_host($1)`, [hp]));
+  assert.equal(host.first_name, "Chidi"); assert.equal(host.business_name, "Nwosu Stays");
+  // cancellation policy: moderate = full refund 5+ days before check-in
+  await as("service_role", null, () => q(`select start_payment($1,'test','SPOT-REF-H1')`, [b.id]));
+  await as("service_role", null, () => q(`select confirm_payment('SPOT-REF-H1', ${b.total_ngn})`));
+  await as("authenticated", g1, () => q(`select cancel_booking($1)`, [b.code]));
+  assert.equal((await q(`select status from payments where reference='SPOT-REF-H1'`))[0].status, "needs_refund");
+});
+await test("strict policy: late cancellation keeps the payment", async () => {
+  await q(`update properties set cancellation_policy='strict' where id=$1`, [hp]);
+  const [b] = await as("authenticated", g1, () => q(`select * from create_booking($1,$2,$3,2)`, [hr, D(6), D(8)]));
+  await as("service_role", null, () => q(`select start_payment($1,'test','SPOT-REF-H2')`, [b.id]));
+  await as("service_role", null, () => q(`select confirm_payment('SPOT-REF-H2', ${b.total_ngn})`));
+  await as("authenticated", g1, () => q(`select cancel_booking($1)`, [b.code]));
+  assert.equal((await q(`select status from payments where reference='SPOT-REF-H2'`))[0].status, "paid");
+});
+
 // ───────── demo seed on a fresh database ─────────
 {
   const db2 = await new PGlite({ extensions: { btree_gist } });

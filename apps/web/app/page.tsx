@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { listAreas, searchRooms, type Area } from "@spotted/core";
+import { searchRooms } from "@spotted/core";
 import { PinMark } from "@/components/Logo";
 import { Icon } from "@/components/Icon";
 import { RoomCard } from "@/components/RoomCard";
@@ -8,6 +8,7 @@ import { SearchBar } from "@/components/SearchBar";
 import { CardsSkeleton, ErrorNote, SetupNotice } from "@/components/Bits";
 import { hasSupabase } from "@/lib/env";
 import { publicDb } from "@/lib/supabase-server";
+import { resolveState } from "@/lib/state-server";
 
 const TRUST = [
   { icon: "zap", t: "Power", d: "Hours of grid light a day, and what backs it up." },
@@ -16,16 +17,15 @@ const TRUST = [
   { icon: "shield-check", t: "Security", d: "Gate, guard and CCTV, each one stated." },
 ];
 
-export default function Home() {
+export default function Home({ searchParams }: PageProps<"/">) {
   return (
     <>
       <section className="hero">
         <div className="hero-pin" aria-hidden="true"><PinMark size={360} color="#F5480F" /></div>
         <div className="container stack gap-4" style={{ position: "relative" }}>
-          <span className="badge" style={{ alignSelf: "flex-start", background: "rgba(250,245,233,.14)", color: "var(--c-cream)" }}>Abuja, Nigeria</span>
           <h1>Places worth staying.</h1>
-          <p className="lead">Apartments and guest houses where the power, water, wifi and security are spelled out before you book.</p>
-          {hasSupabase ? <Suspense fallback={<div className="searchbox skeleton" style={{ height: 96 }} />}><HeroSearch /></Suspense> : null}
+          <p className="lead">Apartments and guest houses across Nigeria, with the power, water, wifi and security spelled out before you book.</p>
+          {hasSupabase ? <Suspense fallback={<div className="skeleton" style={{ height: 120, borderRadius: 20, marginTop: 20, opacity: .3 }} />}><HeroSearch searchParams={searchParams} /></Suspense> : null}
         </div>
       </section>
 
@@ -43,54 +43,71 @@ export default function Home() {
 
       {hasSupabase ? (
         <Suspense fallback={<div className="container section"><CardsSkeleton n={3} /></div>}>
-          <Featured />
+          <Featured searchParams={searchParams} />
         </Suspense>
       ) : <SetupNotice />}
 
       <section className="container section">
-        <div className="card pad row wrap between gap-4" style={{ background: "var(--c-forest)", borderColor: "var(--c-forest)" }}>
+        <div className="host-cta">
           <div className="stack gap-2" style={{ maxWidth: 560 }}>
-            <h2 style={{ color: "var(--c-cream)" }}>Own a flat or guest house in Abuja?</h2>
-            <p style={{ color: "var(--c-sage)" }}>List it free for your first 2 months. Post at least 5 photos per room, answer 22 plain questions, and guests find you.</p>
+            <span className="badge" style={{ alignSelf: "flex-start", background: "rgba(250,245,233,.14)", color: "var(--c-cream)" }}>For owners and managers</span>
+            <h2 style={{ color: "var(--c-cream)" }}>Own a flat, guest house or short-let?</h2>
+            <p style={{ color: "var(--c-sage)" }}>List it free for your first 2 months. Add your rooms and photos, answer 22 plain questions, drop a pin on the map, and guests find you.</p>
           </div>
-          <Link href="/help#hosts" className="btn btn-accent">How hosting works</Link>
+          <div className="row wrap gap-3">
+            <Link href="/host/start" className="btn btn-accent">List your place</Link>
+            <Link href="/host" className="btn btn-ghost" style={{ color: "var(--c-cream)", borderColor: "var(--c-sage)" }}>How it works</Link>
+          </div>
         </div>
       </section>
     </>
   );
 }
 
-async function HeroSearch() {
-  let areas: Area[] = [];
-  try { areas = await listAreas(publicDb()); } catch { /* the form still works with "All of Abuja" */ }
-  return <SearchBar areas={areas} />;
+type SP = PageProps<"/">["searchParams"];
+const pick = async (sp: SP, k: string) => { const v = (await sp)[k]; return Array.isArray(v) ? v[0] : v; };
+
+async function HeroSearch({ searchParams }: { searchParams: SP }) {
+  const r = await resolveState(publicDb(), await pick(searchParams, "state")).catch(() => null);
+  if (!r) return null;
+  return <SearchBar states={r.states} areas={r.areas} stateSlug={r.state?.slug ?? ""} />;
 }
 
-async function loadFeatured() {
+async function loadFeatured(stateFromUrl?: string) {
   try {
     const db = publicDb();
-    const [areas, cards] = await Promise.all([listAreas(db), searchRooms(db, {}, 0, 6)]);
-    return { ok: true as const, areas, cards };
+    const { state, areas } = await resolveState(db, stateFromUrl);
+    const cards = await searchRooms(db, { state: state?.slug }, 0, 6);
+    return { ok: true as const, state, areas, cards };
   } catch (e) {
     return { ok: false as const, message: e instanceof Error ? e.message : "Please try again in a moment." };
   }
 }
 
-async function Featured() {
-  const r = await loadFeatured();
+async function Featured({ searchParams }: { searchParams: SP }) {
+  const r = await loadFeatured(await pick(searchParams, "state"));
   if (!r.ok) return <ErrorNote message={r.message} />;
-  const { areas, cards } = r;
+  const { state, areas, cards } = r;
+  const s = state?.slug ?? "";
+  const city = state?.city ?? "Nigeria";
   return (
     <>
       <section className="container section stack gap-4">
-        <h2>Popular areas</h2>
+        <h2>Popular areas in {city}</h2>
         <div className="row wrap gap-2">
-          {areas.slice(0, 10).map((a) => <Link key={a.slug} href={`/search?area=${a.slug}`} className="chip"><Icon name="map-pin" size={16} /> {a.name}</Link>)}
+          {areas.filter((a) => !a.slug.endsWith("-other")).slice(0, 12).map((a) => <Link key={a.slug} href={`/search?state=${s}&area=${a.slug}`} className="chip"><Icon name="map-pin" size={16} /> {a.name}</Link>)}
         </div>
       </section>
       <section className="container stack gap-4" style={{ paddingBottom: 16 }}>
-        <div className="row between"><h2>Places to stay now</h2><Link href="/search" className="strong" style={{ color: "var(--c-forest)" }}>See all</Link></div>
-        {cards.length ? <div className="cards">{cards.map((c) => <RoomCard key={c.room_id} card={c} />)}</div> : <p className="muted">No places are listed yet. Check back soon.</p>}
+        <div className="row between"><h2>Places to stay in {city}</h2>{cards.length ? <Link href={`/search?state=${s}`} className="strong" style={{ color: "var(--c-forest)" }}>See all</Link> : null}</div>
+        {cards.length ? <div className="cards">{cards.map((c) => <RoomCard key={c.room_id} card={c} />)}</div> : (
+          <div className="card pad stack gap-3" style={{ maxWidth: 640 }}>
+            <span className="iconbox"><Icon name="house" size={22} /></span>
+            <h3>No places in {state?.short_name ?? "this state"} yet</h3>
+            <p className="muted">We are just opening here. If you own or manage a flat or guest house in {city}, list it free and be one of the first guests see.</p>
+            <div className="row wrap gap-2"><Link className="btn btn-accent" href="/host/start">List your place</Link><Link className="btn btn-quiet" href="/?state=fct">Browse Abuja (FCT)</Link></div>
+          </div>
+        )}
       </section>
     </>
   );

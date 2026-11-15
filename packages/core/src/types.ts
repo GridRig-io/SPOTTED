@@ -4,6 +4,8 @@ export type RoomKind = "whole_flat" | "master_room" | "guest_room" | "studio";
 export type PropertyKind = "entire_flat" | "guest_house" | "room_in_home" | "hotel_apartment";
 export type BookingStatus = "pending_payment" | "confirmed" | "cancelled" | "completed" | "expired";
 export type PaymentProviderName = "paystack" | "flutterwave" | "test";
+export type CancellationPolicy = "flexible" | "moderate" | "strict";
+export type PropertyStatus = "draft" | "pending_review" | "published" | "unclaimed" | "suspended";
 
 export interface Photo { url: string | null; scene: string | null; caption: string | null }
 
@@ -29,9 +31,12 @@ export interface RoomCard {
   rating_avg: number;
   rating_count: number;
   subdomain: string | null;
+  cancellation_policy: CancellationPolicy;
   area_id: number;
   area_slug: string;
   area_name: string;
+  state_slug: string;
+  state_name: string;
   rooms_in_property: number;
   photo_count: number;
   photos: Photo[];
@@ -39,9 +44,12 @@ export interface RoomCard {
   amenities: AmenityMap;
 }
 
-export interface Area { id: number; slug: string; name: string; lat: number; lng: number }
+export interface Area { id: number; slug: string; name: string; lat: number; lng: number; state_id: number }
 
-export interface UnclaimedPlace { id: string; name: string; slug: string; kind: PropertyKind; area_hint: string | null; lat: number | null; lng: number | null; area_slug: string; area_name: string }
+/** A Nigerian state Spotted lists places in. Search covers one state at a time. */
+export interface State { id: number; slug: string; name: string; short_name: string; city: string; lat: number; lng: number; sort: number }
+
+export interface UnclaimedPlace { id: string; name: string; slug: string; kind: PropertyKind; area_hint: string | null; lat: number | null; lng: number | null; area_slug: string; area_name: string; state_slug: string }
 
 export interface Quote {
   room_id: string; check_in: string; check_out: string; nights: number; guests: number;
@@ -58,20 +66,28 @@ export interface Booking {
 
 export interface BookingWithPlace extends Booking {
   room: { name: string; kind: RoomKind } | null;
-  property: { name: string; slug: string; area_hint: string | null; check_in_from: string; check_out_by: string; area: { name: string } | null } | null;
+  property: { name: string; slug: string; area_hint: string | null; check_in_from: string; check_out_by: string; cancellation_policy: CancellationPolicy; lat: number | null; lng: number | null; area: { name: string } | null } | null;
 }
 
-export interface PrivateDetails { street_address: string | null; gate_instructions: string | null; wifi_name: string | null; wifi_password: string | null; host_phone: string | null }
+export interface PrivateDetails {
+  street_address: string | null; gate_instructions: string | null; wifi_name: string | null; wifi_password: string | null; host_phone: string | null;
+  /** Exact pin, shared with confirmed guests from the day before check-in. */
+  lat: number | null; lng: number | null; landmark: string | null; directions_note: string | null;
+}
 
 export interface Review { id: string; property_id: string; room_id: string; rating: number; comment: string | null; created_at: string; guest_first_name: string }
 
-export interface Profile { id: string; full_name: string | null; phone: string | null; avatar_url: string | null; role: "guest" | "owner" | "admin" }
+export interface Profile { id: string; full_name: string | null; phone: string | null; avatar_url: string | null; role: "guest" | "owner" | "admin"; business_name: string | null; host_since: string | null }
+
+/** What guests see about the person behind a listing. */
+export interface PropertyHost { first_name: string; business_name: string | null; host_since: string; has_phone: boolean }
 
 export interface PropertyDetail {
   id: string; name: string; slug: string; kind: PropertyKind; description: string; house_rules: string;
-  area_hint: string | null; lat: number | null; lng: number | null; status: string;
+  area_hint: string | null; lat: number | null; lng: number | null; status: PropertyStatus;
   check_in_from: string; check_out_by: string; rating_avg: number; rating_count: number; subdomain: string | null;
-  area: { name: string; slug: string } | null;
+  cancellation_policy: CancellationPolicy;
+  area: { name: string; slug: string; state: { slug: string; short_name: string } | null } | null;
 }
 
 export interface BlockedRange { check_in: string; check_out: string }

@@ -2,23 +2,47 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { AMENITIES } from "@spotted/tokens";
-import { PRICE_PRESETS, ROOM_KIND_LABEL, SORT_LABEL, activeFilterCount, filtersToParams, type SearchFilters, type SortKey } from "@spotted/core";
+import { PRICE_PRESETS, ROOM_KIND_LABEL, SORT_LABEL, activeFilterCount, filtersToParams, inNigeria, type NearPoint, type SearchFilters, type SortKey } from "@spotted/core";
 import { Icon } from "./Icon";
 
 const KINDS = ["whole_flat", "master_room", "guest_room", "studio"] as const;
 const FILTER_AMENITIES = AMENITIES.filter((a) => a.filterable);
 
 /** Quick chips under the search bar + a full filter sheet. Everything lives in the URL so results can be shared. */
-export function FilterBar({ filters }: { filters: SearchFilters }) {
+export function FilterBar({ filters, near }: { filters: SearchFilters; near?: NearPoint | null }) {
   const router = useRouter();
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<SearchFilters>(filters);
+  const [locating, setLocating] = useState(false);
+  const [locErr, setLocErr] = useState("");
 
-  const go = (f: SearchFilters) => {
-    const p = new URLSearchParams(filtersToParams(f)).toString();
-    router.push(`${path}${p ? "?" + p : ""}`);
+  const go = (f: SearchFilters, at: NearPoint | null | undefined = near) => {
+    const p = new URLSearchParams(filtersToParams(f));
+    if (f.sort === "nearest" && at) p.set("near", `${at.lat},${at.lng}`);
+    const view = new URLSearchParams(window.location.search).get("view");
+    if (view === "map") p.set("view", "map");
+    const q = p.toString();
+    router.push(`${path}${q ? "?" + q : ""}`);
   };
+
+  /** Nearest to you: ask the phone or laptop for its location once, rounded to about 1 km before it leaves the device. */
+  function sortBy(k: SortKey) {
+    setLocErr("");
+    if (k !== "nearest") { go({ ...filters, sort: k }, null); return; }
+    if (!("geolocation" in navigator)) { setLocErr("This device cannot share its location."); return; }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        const at = { lat: Math.round(pos.coords.latitude * 100) / 100, lng: Math.round(pos.coords.longitude * 100) / 100 };
+        if (!inNigeria(at)) { setLocErr("You seem to be outside Nigeria, so distances would not help. Showing recommended instead."); return; }
+        go({ ...filters, sort: "nearest" }, at);
+      },
+      (e) => { setLocating(false); setLocErr(e.code === 1 ? "Location is off for this site. Allow it in your browser settings to sort by distance." : "Could not find your location. Try again outside or near a window."); },
+      { enableHighAccuracy: false, timeout: 12000, maximumAge: 300000 },
+    );
+  }
   const toggleAm = (f: SearchFilters, k: string): SearchFilters => {
     const s = new Set(f.amenities ?? []);
     if (s.has(k)) s.delete(k); else s.add(k);
@@ -44,10 +68,12 @@ export function FilterBar({ filters }: { filters: SearchFilters }) {
             );
           })}
         </div>
-        <select className="select" style={{ width: "auto", minHeight: 40, borderRadius: 999 }} aria-label="Sort results" value={filters.sort ?? "recommended"} onChange={(e) => go({ ...filters, sort: e.target.value as SortKey })}>
+        <select className="select sort-select" aria-label="Sort results" value={filters.sort === "nearest" && !near ? "recommended" : filters.sort ?? "recommended"} onChange={(e) => sortBy(e.target.value as SortKey)} disabled={locating}>
           {(Object.keys(SORT_LABEL) as SortKey[]).map((k) => <option key={k} value={k}>{SORT_LABEL[k]}</option>)}
         </select>
       </div>
+      {locating ? <p className="small muted" role="status">Finding where you are…</p> : null}
+      {locErr ? <p className="notice" role="alert">{locErr}</p> : null}
 
       {open ? (
         <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label="Filters" onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
@@ -78,7 +104,7 @@ export function FilterBar({ filters }: { filters: SearchFilters }) {
               </div></section>
 
             <div className="row gap-3">
-              <button className="btn btn-quiet grow" type="button" onClick={() => { const c = { area: filters.area, q: filters.q, checkIn: filters.checkIn, checkOut: filters.checkOut, guests: filters.guests }; setOpen(false); go(c); }}>Clear all</button>
+              <button className="btn btn-quiet grow" type="button" onClick={() => { const c = { state: filters.state, area: filters.area, q: filters.q, checkIn: filters.checkIn, checkOut: filters.checkOut, guests: filters.guests }; setOpen(false); go(c); }}>Clear all</button>
               <button className="btn grow" type="button" onClick={() => { setOpen(false); go(draft); }}>Show places</button>
             </div>
           </div>

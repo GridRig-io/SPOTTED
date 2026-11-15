@@ -2,7 +2,7 @@ import {
   ArrowUpDown, BadgeCheck, BatteryCharging, Bath, Bed, Briefcase, Calendar, Car, Cctv, Check, ChevronDown, ChevronLeft, ChevronRight,
   CigaretteOff, CircleHelp, Clock, Copy, DoorClosed, Droplets, Fan, Flame, Heart, House, Info, KeyRound, Lock, LogOut, Luggage, MapPin,
   Menu, MessageCircle, Microwave, Minus, PartyPopper, PawPrint, Plus, Refrigerator, Search, ShieldCheck, SlidersHorizontal, Snowflake,
-  Star, ThermometerSun, TriangleAlert, Tv, User, Users, Utensils, WashingMachine, Wifi, X, Zap, Image as ImageIcon,
+  Star, ThermometerSun, TriangleAlert, Tv, User, Users, Utensils, WashingMachine, Wifi, X, Zap, Image as ImageIcon, Share2, Navigation, LocateFixed, Map as MapIcon, Upload, Trash2, Pencil, Eye, CalendarX, LayoutDashboard, CircleCheck, Circle, Clock3, Ban, ExternalLink, Phone, Landmark, Hourglass,
   type LucideIcon,
 } from "lucide-react";
 
@@ -16,6 +16,9 @@ export const ICONS: Record<string, LucideIcon> = {
   refrigerator: Refrigerator, search: Search, "shield-check": ShieldCheck, "sliders-horizontal": SlidersHorizontal, snowflake: Snowflake, star: Star,
   "thermometer-sun": ThermometerSun, "triangle-alert": TriangleAlert, tv: Tv, user: User, users: Users, utensils: Utensils,
   "washing-machine": WashingMachine, wifi: Wifi, x: X, zap: Zap, image: ImageIcon,
+  share: Share2, navigation: Navigation, "locate-fixed": LocateFixed, map: MapIcon, upload: Upload, "trash-2": Trash2, pencil: Pencil, eye: Eye,
+  "calendar-x": CalendarX, "layout-dashboard": LayoutDashboard, "circle-check": CircleCheck, circle: Circle, "clock-3": Clock3, ban: Ban,
+  "external-link": ExternalLink, phone: Phone, landmark: Landmark, hourglass: Hourglass,
 };
 
 export function Icon({ name, size = 20, color, strokeWidth = 2, className, fill }: { name: string; size?: number; color?: string; strokeWidth?: number; className?: string; fill?: string }) {

@@ -4,13 +4,15 @@ import { FlatList, Pressable, ScrollView, StyleSheet, TextInput, View } from "re
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AMENITIES } from "@spotted/tokens";
 import {
-  activeFilterCount, filtersFromParams, filtersToParams, formatRange, listAreas, listUnclaimed, searchRooms, SORT_LABEL,
+  activeFilterCount, plural, filtersFromParams, filtersToParams, formatRange, listAreas, listStates, listUnclaimed, searchRooms, SORT_LABEL,
   type SearchFilters, type SortKey,
 } from "@spotted/core";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { FilterSheet, toggleAmenity } from "@/components/FilterSheet";
 import { Icon } from "@/components/Icon";
 import { RoomCard } from "@/components/RoomCard";
+import { StatePicker } from "@/components/StatePicker";
+import { useChosenState } from "@/lib/chosenState";
 import { BackBar } from "@/components/Screen";
 import { Badge, Button, Card, CardsSkeleton, Chip, Empty, SetupNotice, Text } from "@/components/ui";
 import { hasSupabase } from "@/lib/env";
@@ -18,16 +20,19 @@ import { useLoad } from "@/lib/useLoad";
 import { useAuth } from "@/providers/AuthProvider";
 import { colors, textStyle } from "@/theme";
 
-const PARAM_KEYS = ["area", "q", "in", "out", "guests", "min", "max", "amenities", "kind", "sort"] as const;
+const PARAM_KEYS = ["state", "area", "q", "in", "out", "guests", "min", "max", "amenities", "kind", "sort"] as const;
 const QUICK = ["grid_power", "backup_power", "wifi", "guard", "air_conditioning", "parking"];
-const SORTS = Object.keys(SORT_LABEL) as SortKey[];
+// "Nearest to you" needs the phone's location module, which comes with the next app build. The website has it now.
+const SORTS: SortKey[] = (Object.keys(SORT_LABEL) as SortKey[]).filter((k) => k !== "nearest");
 
 export default function Search() {
   const router = useRouter();
   const { db } = useAuth();
   const raw = useLocalSearchParams<Record<string, string | string[]>>();
   const get = (k: string) => { const v = raw[k]; return Array.isArray(v) ? v[0] : v; };
-  const filters = filtersFromParams(get);
+  const parsed = filtersFromParams(get);
+  const [stateSlug, chooseState] = useChosenState(parsed.state);
+  const filters = { ...parsed, state: parsed.state ?? stateSlug };
   const [sheet, setSheet] = useState(false);
   const [dates, setDates] = useState(false);
   const [text, setText] = useState(filters.q ?? "");
@@ -38,11 +43,14 @@ export default function Search() {
   };
   const key = JSON.stringify(filtersToParams(filters));
   const { data, error, loading, reload } = useLoad(db ? async () => {
-    const [areas, rooms, unclaimed] = await Promise.all([listAreas(db), searchRooms(db, filters, 0, 30), listUnclaimed(db, filters.area)]);
-    return { areas, rooms, unclaimed };
+    const states = await listStates(db);
+    const state = states.find((s) => s.slug === filters.state) ?? states[0];
+    const [areas, rooms, unclaimed] = await Promise.all([listAreas(db, state), searchRooms(db, { ...filters, state: state?.slug }, 0, 30), listUnclaimed(db, filters.area)]);
+    return { states, state, areas, rooms, unclaimed: unclaimed.filter((u) => u.state_slug === state?.slug) };
   } : null, key);
 
   const area = data?.areas.find((a) => a.slug === filters.area);
+  const city = data?.state?.city ?? "Abuja";
   const n = activeFilterCount(filters);
   const carry: Record<string, string> = {};
   if (filters.checkIn && filters.checkOut) { carry.in = filters.checkIn; carry.out = filters.checkOut; }
@@ -51,6 +59,7 @@ export default function Search() {
   const header = (
     <View style={{ gap: 14, paddingBottom: 8 }}>
       <BackBar />
+      {data ? <StatePicker states={data.states} current={data.state?.slug ?? filters.state ?? ""} onChoose={(s) => { chooseState(s); apply({ checkIn: filters.checkIn, checkOut: filters.checkOut, guests: filters.guests, state: s }); }} /> : null}
       <View style={styles.searchBox}>
         <Icon name="search" size={20} color={colors.forest} />
         <TextInput value={text} onChangeText={setText} placeholder="Area, street or place name" placeholderTextColor={colors.soft}
@@ -60,7 +69,7 @@ export default function Search() {
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hrow}>
-        <Chip label="All of Abuja" on={!filters.area} onPress={() => apply({ ...filters, area: undefined })} />
+        <Chip label={`All of ${city}`} on={!filters.area} onPress={() => apply({ ...filters, area: undefined })} />
         {(data?.areas ?? []).map((a) => <Chip key={a.slug} label={a.name} on={filters.area === a.slug} onPress={() => apply({ ...filters, area: filters.area === a.slug ? undefined : a.slug })} />)}
       </ScrollView>
 
@@ -75,8 +84,8 @@ export default function Search() {
 
       <View style={styles.between}>
         <View style={{ flex: 1, gap: 2 }}>
-          <Text v="h2" numberOfLines={1}>{area ? `Places in ${area.name}` : "Places in Abuja"}</Text>
-          <Text v="small" color={colors.muted}>{data ? (data.rooms.length ? `${data.rooms.length}${data.rooms.length >= 30 ? "+" : ""} places` : "No places") : " "}</Text>
+          <Text v="h2" numberOfLines={1}>{area ? `Places in ${area.name}` : `Places in ${city}`}</Text>
+          <Text v="small" color={colors.muted}>{data ? (data.rooms.length ? `${plural(data.rooms.length, "place")}${data.rooms.length >= 30 ? "+" : ""}${filters.checkIn && filters.checkOut ? " · prices for the whole stay" : ""}` : "No places") : " "}</Text>
         </View>
         <Chip icon="arrow-up-down" label={SORT_LABEL[filters.sort ?? "recommended"]} onPress={() => apply({ ...filters, sort: SORTS[(SORTS.indexOf(filters.sort ?? "recommended") + 1) % SORTS.length] })} />
       </View>
@@ -85,7 +94,7 @@ export default function Search() {
 
   const footer = data?.unclaimed.length ? (
     <View style={{ gap: 12, marginTop: 28 }}>
-      <Text v="h3">Also in {area ? area.name : "Abuja"}, not on Spotted yet</Text>
+      <Text v="h3">Also in {area ? area.name : city}, not on Spotted yet</Text>
       <Text v="small" color={colors.muted}>These places exist but nobody has claimed them, so we cannot show verified amenities or take bookings.</Text>
       {data.unclaimed.map((u) => (
         <Card key={u.id} onPress={() => router.push({ pathname: "/place/[slug]", params: { slug: u.slug } })} accessibilityLabel={`${u.name}, not claimed yet`} style={{ gap: 6 }}>
@@ -105,7 +114,7 @@ export default function Search() {
           renderItem={({ item }) => <View style={{ marginBottom: 28 }}><RoomCard card={item} params={carry} /></View>}
           ListHeaderComponent={header} ListFooterComponent={footer ?? undefined}
           ListEmptyComponent={loading && !data ? <CardsSkeleton n={2} /> : error ? <Empty icon="triangle-alert" title="We could not load places" action={<Button title="Try again" kind="quiet" onPress={reload} />}>{error}</Empty>
-            : <Empty title="Nothing matches that yet" action={<Button title="Clear everything" onPress={() => { setText(""); apply({}); }} />}>Try other dates, remove a must-have, or look at a nearby area. Filters only show rooms that include what you pick.</Empty>}
+            : <Empty title="Nothing matches that yet" action={<Button title="Clear filters" onPress={() => { setText(""); apply({ state: filters.state }); }} />}>Try other dates, remove a must-have, or look at a nearby area. Filters only show rooms that include what you pick.</Empty>}
           contentContainerStyle={{ padding: 20, paddingBottom: 48 }} keyboardShouldPersistTaps="handled" onRefresh={reload} refreshing={loading && Boolean(data)}
         />
       )}

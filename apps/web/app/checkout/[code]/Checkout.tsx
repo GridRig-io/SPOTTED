@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { cancelBooking, formatNaira, formatRange, getBooking, plural, ROOM_KIND_LABEL, type BookingWithPlace } from "@spotted/core";
+import { cancelBooking, cancellationLine, formatNaira, formatRange, getBooking, plural, ROOM_KIND_LABEL, type BookingWithPlace } from "@spotted/core";
 import { useAuth } from "@/components/AuthProvider";
 import { RequireAuth } from "@/components/RequireAuth";
 import { Icon } from "@/components/Icon";
@@ -77,11 +77,12 @@ function Inner({ code }: { code: string }) {
 
       {b.status === "pending_payment" && !expired ? (
         <>
-          <div className="notice row gap-2"><Icon name="clock" size={18} /> Your dates are held for <b>{mm || "20:00"}</b>. After that they open up again.</div>
+          {b.property ? (() => { const c = cancellationLine(b.property.cancellation_policy ?? "moderate", b.check_in); return <p className="small row gap-2" style={{ alignItems: "flex-start", color: c.free ? "var(--c-forest)" : "var(--c-red)" }}><Icon name={c.free ? "circle-check" : "info"} size={18} /><span><b>{c.text}.</b> After that, the stay is not refundable.</span></p>; })() : null}
+          <p className="notice row gap-2" style={{ alignItems: "flex-start" }}><Icon name="clock" size={18} /><span>Your dates are held for <b>{mm || "20:00"}</b>. After that they open up again.</span></p>
           {err ? <p className="alert" role="alert">{err}</p> : null}
           <button className="btn btn-accent btn-block" onClick={pay} disabled={busy}>{busy ? "Opening secure payment…" : `Pay ${formatNaira(b.total_ngn)}`}</button>
           <p className="caption muted row gap-2"><Icon name="lock" size={14} /> Card details are entered on the payment provider&apos;s page. Spotted never sees or stores them.</p>
-          <button className="btn btn-quiet" type="button" onClick={async () => { if (db && confirm("Release these dates?")) { await cancelBooking(db, code).catch(() => {}); router.push("/trips"); } }}>Cancel this booking</button>
+          <button className="btn btn-quiet" type="button" onClick={async () => { if (db) { await cancelBooking(db, code).catch(() => {}); router.push("/trips"); } }}>Release these dates</button>
         </>
       ) : (
         <div className="stack gap-3">

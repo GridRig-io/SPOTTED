@@ -21,6 +21,7 @@ for (const f of readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) await
 await db.exec(readFileSync(new URL("../seed/demo.sql", import.meta.url), "utf8"));
 console.log("mock supabase ready on", port);
 
+const FILES = new Map();
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 const uuidFor = (s) => { const h = createHash("md5").update(s).digest("hex"); return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`; };
 const mkToken = (u) => `${b64({ alg: "HS256", typ: "JWT" })}.${b64({ sub: u.id, role: "authenticated", aud: "authenticated", email: u.email, phone: u.phone, exp: Math.floor(Date.now() / 1000) + 86400 })}.sig`;
@@ -53,16 +54,32 @@ function filters(url) {
 }
 
 const EMBEDS = {
-  properties: (sel) => sel.includes("area:areas") ? { join: " left join lateral (select jsonb_build_object('name', a.name, 'slug', a.slug) as area from areas a where a.id = t.area_id) ar on true", extra: ", ar.area" } : null,
+  properties: (sel) => sel.includes("area:areas") ? { join: " left join lateral (select jsonb_build_object('name', a.name, 'slug', a.slug, 'state', (select jsonb_build_object('slug', s.slug, 'short_name', s.short_name) from states s where s.id = a.state_id)) as area from areas a where a.id = t.area_id) ar on true", extra: ", ar.area" } : null,
   bookings: (sel) => sel.includes("room:rooms") ? { join: ` left join lateral (select jsonb_build_object('name', r.name, 'kind', r.kind) as room from rooms r where r.id = t.room_id) rr on true
-      left join lateral (select jsonb_build_object('name', p.name, 'slug', p.slug, 'area_hint', p.area_hint, 'check_in_from', p.check_in_from, 'check_out_by', p.check_out_by, 'area', (select jsonb_build_object('name', a.name) from areas a where a.id = p.area_id)) as property from properties p where p.id = t.property_id) pp on true`, extra: ", rr.room, pp.property" } : null,
+      left join lateral (select jsonb_build_object('name', p.name, 'slug', p.slug, 'area_hint', p.area_hint, 'check_in_from', p.check_in_from, 'check_out_by', p.check_out_by, 'cancellation_policy', p.cancellation_policy, 'lat', p.lat, 'lng', p.lng, 'area', (select jsonb_build_object('name', a.name) from areas a where a.id = p.area_id)) as property from properties p where p.id = t.property_id) pp on true`, extra: ", rr.room, pp.property" } : null,
 };
 
 createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   const send = (code, body, extra = {}) => { res.writeHead(code, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "*", ...extra }); res.end(body === undefined ? "" : JSON.stringify(body)); };
   if (req.method === "OPTIONS") return send(204);
-  let raw = ""; for await (const c of req) raw += c;
+  const chunks = []; for await (const c of req) chunks.push(c);
+  const buf = Buffer.concat(chunks);
+  // ───── storage (photos) ─────
+  let sm = /^\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/.exec(url.pathname);
+  if (sm && req.method === "GET") { const f = FILES.get(`${sm[1]}/${decodeURIComponent(sm[2])}`); if (!f) return send(404, { message: "not found" }); res.writeHead(200, { "Content-Type": f.type, "Access-Control-Allow-Origin": "*" }); return res.end(f.data); }
+  sm = /^\/storage\/v1\/object\/([^/]+)\/(.+)$/.exec(url.pathname);
+  if (sm && (req.method === "POST" || req.method === "PUT")) {
+    const who0 = userOf(req); if (who0.role !== "authenticated") return send(403, { message: "new row violates row-level security policy" });
+    const path = decodeURIComponent(sm[2]); if (!path.startsWith(who0.sub + "/")) return send(403, { message: "new row violates row-level security policy" });
+    let data = buf, type = req.headers["content-type"] ?? "application/octet-stream";
+    if (type.startsWith("multipart/form-data")) { const b = "--" + type.split("boundary=")[1]; const parts = buf.toString("latin1").split(b); const part = parts.find((x) => x.includes("filename=")) ?? ""; const [head, ...rest] = part.split("\r\n\r\n"); type = (/Content-Type: ([^\r\n]+)/i.exec(head) ?? [])[1] ?? "image/jpeg"; data = Buffer.from(rest.join("\r\n\r\n").replace(/\r\n$/, ""), "latin1"); }
+    if (data.length > 6291456) return send(413, { statusCode: "413", error: "Payload too large", message: "The object exceeded the maximum allowed size" });
+    FILES.set(`${sm[1]}/${path}`, { type, data }); return send(200, { Key: `${sm[1]}/${path}`, Id: path });
+  }
+  sm = /^\/storage\/v1\/object\/([^/]+)$/.exec(url.pathname);
+  if (sm && req.method === "DELETE") { const b = JSON.parse(buf.toString() || "{}"); for (const pth of b.prefixes ?? []) FILES.delete(`${sm[1]}/${pth}`); return send(200, []); }
+  const raw = buf.toString();
   const body = raw ? JSON.parse(raw) : {};
   const who = userOf(req);
   try {
@@ -83,6 +100,8 @@ createServer(async (req, res) => {
     if (url.pathname === "/auth/v1/token") { const t = (req.headers.authorization ?? "").replace("Bearer ", ""); return send(200, { access_token: t, refresh_token: t, token_type: "bearer", expires_in: 86400 }); }
     if (url.pathname === "/auth/v1/logout") return send(204);
 
+    // ───── test-only: run SQL as the database owner ─────
+    if (url.pathname === "/__sql" && process.env.MOCK_SQL === "1") { const r = await db.query(body.sql); return send(200, r.rows); }
     // ───── rpc ─────
     let m = /^\/rest\/v1\/rpc\/([a-z_]+)$/.exec(url.pathname);
     if (m) {
@@ -92,7 +111,7 @@ createServer(async (req, res) => {
       const cols = r.fields.map((f) => f.name);
       if (cols.length === 1 && cols[0] === fn) return send(200, r.rows[0]?.[fn] ?? null);
       // functions returning a single composite row (create_booking) come back as columns
-      const single = ["create_booking", "cancel_booking", "start_payment", "confirm_payment"].includes(fn);
+      const single = ["create_booking", "cancel_booking", "start_payment", "confirm_payment", "become_host", "submit_property", "review_property"].includes(fn);
       return send(200, single ? r.rows[0] : r.rows);
     }
     // ───── tables ─────

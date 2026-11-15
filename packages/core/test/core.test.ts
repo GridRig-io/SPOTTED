@@ -50,3 +50,45 @@ test("flutterwave webhook: hash checked, only successful counts", () => {
   assert.throws(() => f.parseWebhook(body, new Headers({ "verif-hash": "wrong" })), /Bad Flutterwave hash/);
   assert.throws(() => flutterwave("k", "").parseWebhook(body, new Headers()), /Bad Flutterwave hash/);
 });
+
+import { cancellationLine, freeCancelUntil, refundableToday, stayTotal } from "../src/policy.ts";
+import { distanceKm, formatDistance, googleDirectionsUrl, inNigeria } from "../src/geo.ts";
+import { makeSlug } from "../src/host.ts";
+
+test("cancellation policies: free-until date and refund rule match the database", () => {
+  assert.equal(freeCancelUntil("moderate", "2026-12-10"), "2026-12-05");
+  assert.equal(freeCancelUntil("flexible", "2026-12-10"), "2026-12-09");
+  assert.equal(freeCancelUntil("strict", "2026-12-20"), "2026-12-06");
+  assert.equal(refundableToday("moderate", "2026-12-10", "2026-12-05"), true);
+  assert.equal(refundableToday("moderate", "2026-12-10", "2026-12-06"), false);
+  assert.deepEqual(cancellationLine("moderate", "2026-12-10", "2026-12-01"), { text: "Free cancellation until 5 Dec", free: true });
+  assert.equal(cancellationLine("strict", "2026-12-03", "2026-12-01").free, false);
+});
+
+test("total stay price shown on cards", () => {
+  assert.equal(stayTotal({ price_per_night: 95000, cleaning_fee: 10000 }, 2), 200000);
+  assert.equal(stayTotal({ price_per_night: 10000, cleaning_fee: 0 }, 3, 5), 31500);
+});
+
+test("geo helpers", () => {
+  const km = distanceKm({ lat: 6.4478, lng: 3.4735 }, { lat: 6.43, lng: 3.42 });
+  assert.ok(km > 5 && km < 7);
+  assert.equal(formatDistance(0.42), "400 m away");
+  assert.equal(formatDistance(3.44), "3.4 km away");
+  assert.match(googleDirectionsUrl({ lat: 9, lng: 7 }), /destination=9,7/);
+  assert.equal(inNigeria({ lat: 51.5, lng: -0.1 }), false);
+});
+
+test("state is part of the search link; nearest needs a location and never enters the URL", () => {
+  const f = filtersFromParams((k) => ({ state: "lagos", area: "lekki", sort: "nearest" } as Record<string, string>)[k]);
+  assert.equal(f.state, "lagos");
+  assert.equal(filtersToParams(f).state, "lagos");
+  assert.equal(filtersToRpc(f).p_sort, "recommended");
+  const r = filtersToRpc(f, 0, 24, { lat: 6.45, lng: 3.47 });
+  assert.equal(r.p_sort, "nearest"); assert.equal(r.p_near_lat, 6.45); assert.equal(r.p_state, "lagos");
+});
+
+test("listing slugs are tidy and unique-ish", () => {
+  assert.match(makeSlug("Lekki Nest!"), /^lekki-nest-[a-z0-9]{4}$/);
+  assert.notEqual(makeSlug("A"), makeSlug("A"));
+});

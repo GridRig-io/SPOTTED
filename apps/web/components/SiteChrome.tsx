@@ -9,7 +9,7 @@ const TABS = [
   { href: "/", label: "Explore", icon: "search", match: (p: string) => p === "/" || p.startsWith("/search") || p.startsWith("/place") },
   { href: "/saved", label: "Saved", icon: "heart", match: (p: string) => p.startsWith("/saved") },
   { href: "/trips", label: "Trips", icon: "luggage", match: (p: string) => p.startsWith("/trips") || p.startsWith("/booking") || p.startsWith("/checkout") },
-  { href: "/account", label: "Profile", icon: "user", match: (p: string) => p.startsWith("/account") || p.startsWith("/signin") },
+  { href: "/account", label: "Profile", icon: "user", match: (p: string) => p.startsWith("/account") || p.startsWith("/signin") || p.startsWith("/host") },
 ];
 
 export function Header() {
@@ -24,6 +24,7 @@ export function Header() {
           <Link href="/help" className="nav-link" aria-current={path.startsWith("/help") ? "page" : undefined}>Help</Link>
         </nav>
         <div className="row gap-2">
+          <Link href="/host" className="nav-link host-link" aria-current={path.startsWith("/host") ? "page" : undefined}>List your place</Link>
           {ready && user ? (
             <Link href="/account" className="btn btn-quiet btn-sm"><Icon name="user" size={18} /> Account</Link>
           ) : (
@@ -56,12 +57,12 @@ export function Footer() {
         <Logo height={36} tone="cream" />
         <div className="row wrap gap-8" style={{ alignItems: "flex-start" }}>
           <div className="stack gap-2" style={{ maxWidth: 320 }}>
-            <p style={{ color: "var(--c-sage)" }}>Places worth staying. Every room in Abuja, with the power, water, wifi and security spelled out before you book.</p>
+            <p style={{ color: "var(--c-sage)" }}>Places worth staying. Apartments and guest houses across Nigeria, with the power, water, wifi and security spelled out before you book.</p>
           </div>
           <div className="stack gap-2"><span className="eyebrow">Guests</span><Link href="/search">Find a place</Link><Link href="/trips">Your trips</Link><Link href="/help">Help</Link></div>
-          <div className="stack gap-2"><span className="eyebrow">Hosts</span><Link href="/help#hosts">List your place</Link><Link href="/help#claim">Claim a listing</Link></div>
+          <div className="stack gap-2"><span className="eyebrow">Hosts</span><Link href="/host/start">List your place</Link><Link href="/host">How hosting works</Link><Link href="/host/dashboard">Host dashboard</Link><Link href="/help#claim">Claim a listing</Link></div>
         </div>
-        <p className="caption" style={{ color: "var(--c-sage)" }}>© Spotted · Abuja, Nigeria</p>
+        <p className="caption" style={{ color: "var(--c-sage)" }}>© Spotted · Nigeria · Maps © OpenStreetMap contributors</p>
       </div>
     </footer>
   );

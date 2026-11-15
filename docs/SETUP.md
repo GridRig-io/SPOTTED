@@ -1,5 +1,12 @@
 # Spotted: setup in about 30 minutes
 
+> **Update (15 Nov 2026): states, GPS, host tools**
+> - New migrations `0006_hosts_and_policies.sql` and `0007_states_and_location.sql` (already applied to the live project). They add owner registration, Spotted review before listings go live, host date blocks, cancellation policies (Flexible / Moderate / Strict), states with areas inside them, and private exact locations.
+> - Host tools are on the website: `/host` (how it works), `/host/start` (register), `/host/dashboard`, `/host/listings/<id>` (details, location pin, rooms, 22 questions, photos, calendar, submit). The app's Profile and Home open them in an in-app browser.
+> - Review queue: `/admin/review`. Only accounts with `role = 'admin'` in `profiles` can approve. To make yourself admin, sign in once, then in Supabase SQL: `update profiles set role = 'admin' where id = (select id from auth.users where email = 'YOUR EMAIL');`
+> - Maps use free OpenStreetMap tiles (attribution shown). Guests see a rounded (about 1 km) spot before booking; the exact pin, landmark and Get directions show on the booking from the day before check-in.
+> - In the app, the in-app map view and "Nearest to you" need a new build with a location module; directions open Google Maps or Apple Maps today.
+
 > **Live now (14 Nov 2026)**
 > - Website: https://spotted-gules.vercel.app (Vercel project `spotted`, team GridRig-io, root directory `apps/web`)
 > - Database: Supabase project `spotted` (`xdczoryoeidjhvqmzlwd`, London). Migrations 0001 to 0005 and the demo seed are already loaded.

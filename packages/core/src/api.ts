@@ -1,7 +1,7 @@
 import type { Db } from "./client";
-import { filtersToRpc, type SearchFilters } from "./filters";
+import { filtersToRpc, type NearPoint, type SearchFilters } from "./filters";
 import type {
-  Area, BlockedRange, Booking, BookingWithPlace, Photo, PrivateDetails, Profile, PropertyDetail, Quote, RoomAmenityRow, RoomCard, Review, UnclaimedPlace,
+  Area, BlockedRange, PropertyHost, State, Booking, BookingWithPlace, Photo, PrivateDetails, Profile, PropertyDetail, Quote, RoomAmenityRow, RoomCard, Review, UnclaimedPlace,
 } from "./types";
 
 /** Turn a Supabase/Postgres error into a sentence a guest can read. */
@@ -24,14 +24,28 @@ async function rpc<T>(db: Db, fn: string, args?: Record<string, unknown>): Promi
 }
 
 // ───────── browse ─────────
-export async function listAreas(db: Db): Promise<Area[]> {
-  const { data, error } = await db.from("areas").select("id, slug, name, lat, lng").order("name");
+export async function listStates(db: Db): Promise<State[]> {
+  const { data, error } = await db.from("states").select("id, slug, name, short_name, city, lat, lng, sort").order("sort");
   if (error) fail(error);
-  return (data ?? []) as Area[];
+  return (data ?? []) as State[];
 }
 
-export async function searchRooms(db: Db, filters: SearchFilters = {}, page = 0, pageSize = 24): Promise<RoomCard[]> {
-  return (await rpc<RoomCard[]>(db, "search_rooms", filtersToRpc(filters, page, pageSize))) ?? [];
+/** Areas of one state (or every area if no state is given). "Other areas" always comes last. */
+export async function listAreas(db: Db, state?: State | null): Promise<Area[]> {
+  let q = db.from("areas").select("id, slug, name, lat, lng, state_id");
+  if (state) q = q.eq("state_id", state.id);
+  const { data, error } = await q.order("name");
+  if (error) fail(error);
+  return ((data ?? []) as Area[]).sort((a, b) => Number(a.slug.endsWith("-other")) - Number(b.slug.endsWith("-other")));
+}
+
+export async function searchRooms(db: Db, filters: SearchFilters = {}, page = 0, pageSize = 24, near?: NearPoint | null): Promise<RoomCard[]> {
+  return (await rpc<RoomCard[]>(db, "search_rooms", filtersToRpc(filters, page, pageSize, near))) ?? [];
+}
+
+export async function getPropertyHost(db: Db, propertyId: string): Promise<PropertyHost | null> {
+  const rows = await rpc<PropertyHost[]>(db, "property_host", { p_property_id: propertyId });
+  return rows?.[0] ?? null;
 }
 
 export async function getRoomCard(db: Db, roomId: string): Promise<RoomCard | null> {
@@ -49,7 +63,7 @@ export async function getRoomsOfProperty(db: Db, propertyId: string): Promise<Ro
 
 export async function getProperty(db: Db, idOrSlug: string): Promise<PropertyDetail | null> {
   const isId = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(idOrSlug);
-  const sel = "id, name, slug, kind, description, house_rules, area_hint, lat, lng, status, check_in_from, check_out_by, rating_avg, rating_count, subdomain, area:areas(name, slug)";
+  const sel = "id, name, slug, kind, description, house_rules, area_hint, lat, lng, status, check_in_from, check_out_by, rating_avg, rating_count, subdomain, cancellation_policy, area:areas(name, slug, state:states(slug, short_name))";
   const { data, error } = await db.from("properties").select(sel).eq(isId ? "id" : "slug", idOrSlug).maybeSingle();
   if (error) fail(error);
   return (data as unknown as PropertyDetail) ?? null;
@@ -101,7 +115,7 @@ export async function cancelBooking(db: Db, code: string): Promise<Booking> {
 }
 
 const BOOKING_SELECT =
-  "*, room:rooms(name, kind), property:properties(name, slug, area_hint, check_in_from, check_out_by, area:areas(name))";
+  "*, room:rooms(name, kind), property:properties(name, slug, area_hint, check_in_from, check_out_by, cancellation_policy, lat, lng, area:areas(name))";
 
 export async function myBookings(db: Db): Promise<BookingWithPlace[]> {
   const { data, error } = await db.from("bookings").select(BOOKING_SELECT).order("check_in", { ascending: false });
@@ -153,7 +167,7 @@ export async function setSaved(db: Db, propertyId: string, saved: boolean): Prom
 export async function getMyProfile(db: Db): Promise<Profile | null> {
   const { data: u } = await db.auth.getUser();
   if (!u.user) return null;
-  const { data, error } = await db.from("profiles").select("id, full_name, phone, avatar_url, role").eq("id", u.user.id).maybeSingle();
+  const { data, error } = await db.from("profiles").select("id, full_name, phone, avatar_url, role, business_name, host_since").eq("id", u.user.id).maybeSingle();
   if (error) fail(error);
   return (data as Profile) ?? null;
 }
@@ -186,8 +200,8 @@ export async function verifyPhoneCode(db: Db, phone: string, token: string): Pro
   if (error) throw new SpottedError(/expired|invalid/i.test(error.message) ? "That code is wrong or has expired." : error.message, error.code);
 }
 
-export async function sendEmailCode(db: Db, email: string): Promise<void> {
-  const { error } = await db.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+export async function sendEmailCode(db: Db, email: string, redirectTo?: string): Promise<void> {
+  const { error } = await db.auth.signInWithOtp({ email, options: { shouldCreateUser: true, ...(redirectTo ? { emailRedirectTo: redirectTo } : {}) } });
   if (error) fail(error);
 }
 

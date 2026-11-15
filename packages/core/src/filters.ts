@@ -1,9 +1,10 @@
 import type { RoomKind } from "./types";
 
-export type SortKey = "recommended" | "price_asc" | "price_desc" | "newest";
+export type SortKey = "recommended" | "price_asc" | "price_desc" | "newest" | "nearest";
 
 export interface SearchFilters {
-  area?: string;         // area slug
+  state?: string;        // state slug; search covers one state at a time
+  area?: string;         // area slug (inside the state)
   q?: string;
   checkIn?: string;      // YYYY-MM-DD
   checkOut?: string;
@@ -16,7 +17,7 @@ export interface SearchFilters {
 }
 
 export const SORT_LABEL: Record<SortKey, string> = {
-  recommended: "Recommended", price_asc: "Price, low to high", price_desc: "Price, high to low", newest: "Newest",
+  recommended: "Recommended", price_asc: "Price, low to high", price_desc: "Price, high to low", newest: "Newest", nearest: "Nearest to you",
 };
 
 const num = (v: string | null | undefined) => {
@@ -32,6 +33,7 @@ export function filtersFromParams(get: (k: string) => string | null | undefined)
   const kind = get("kind") as RoomKind | null | undefined;
   const am = get("amenities");
   return {
+    state: get("state") || undefined,
     area: get("area") || undefined,
     q: get("q") || undefined,
     checkIn: day(get("in")),
@@ -47,6 +49,7 @@ export function filtersFromParams(get: (k: string) => string | null | undefined)
 
 export function filtersToParams(f: SearchFilters): Record<string, string> {
   const o: Record<string, string> = {};
+  if (f.state) o.state = f.state;
   if (f.area) o.area = f.area;
   if (f.q) o.q = f.q;
   if (f.checkIn) o.in = f.checkIn;
@@ -66,9 +69,16 @@ export function toQueryString(f: SearchFilters): string {
   return s ? `?${s}` : "";
 }
 
+/** Where the guest is, for "Nearest to you". Never put in the URL. */
+export interface NearPoint { lat: number; lng: number }
+
 /** Arguments for the search_rooms database function. */
-export function filtersToRpc(f: SearchFilters, page = 0, pageSize = 24) {
+export function filtersToRpc(f: SearchFilters, page = 0, pageSize = 24, near?: NearPoint | null) {
+  const nearest = f.sort === "nearest" && near;
   return {
+    p_state: f.state ?? null,
+    p_near_lat: nearest ? near.lat : null,
+    p_near_lng: nearest ? near.lng : null,
     p_area: f.area ?? null,
     p_q: f.q ?? null,
     p_check_in: f.checkIn && f.checkOut ? f.checkIn : null,
@@ -78,7 +88,7 @@ export function filtersToRpc(f: SearchFilters, page = 0, pageSize = 24) {
     p_max: f.maxPrice ?? null,
     p_amenities: f.amenities ?? [],
     p_kind: f.kind ?? null,
-    p_sort: f.sort ?? "recommended",
+    p_sort: f.sort === "nearest" && !near ? "recommended" : f.sort ?? "recommended",
     p_limit: pageSize,
     p_offset: page * pageSize,
   };

@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { Pressable, StyleSheet, View } from "react-native";
-import { formatNaira, plural, PROPERTY_KIND_LABEL, ROOM_KIND_LABEL, type RoomCard as RoomCardT } from "@spotted/core";
+import { formatNaira, nightsBetween, plural, PROPERTY_KIND_LABEL, ROOM_KIND_LABEL, stayTotal, type RoomCard as RoomCardT } from "@spotted/core";
 import { colors, radii } from "@/theme";
 import { Icon } from "./Icon";
 import { Photo } from "./Photo";
@@ -10,6 +10,7 @@ import { Badge, Text } from "./ui";
 
 export function RoomCard({ card, params }: { card: RoomCardT; params?: Record<string, string> }) {
   const router = useRouter();
+  const nights = params?.in && params?.out ? nightsBetween(params.in, params.out) : 0;
   const open = () => router.push({ pathname: "/place/[slug]", params: { slug: card.property_slug, room: card.room_id, ...params } });
   return (
     <View style={{ gap: 10 }}>
@@ -35,7 +36,9 @@ export function RoomCard({ card, params }: { card: RoomCardT; params?: Record<st
           {ROOM_KIND_LABEL[card.room_kind]} · {PROPERTY_KIND_LABEL[card.property_kind]} · {card.area_name}{card.rooms_in_property > 1 ? ` · ${plural(card.rooms_in_property, "room")} here` : ""}
         </Text>
         <GlancePills amenities={card.amenities} />
-        <Text v="body"><Text v="bodyStrong">{formatNaira(card.price_per_night)}</Text> <Text v="small" color={colors.muted}>a night · sleeps {card.max_guests}</Text></Text>
+        {nights > 0
+          ? <Text v="body"><Text v="bodyStrong">{formatNaira(stayTotal(card, nights))}</Text> <Text v="small" color={colors.muted}>for {plural(nights, "night")} · {formatNaira(card.price_per_night)} a night{card.cleaning_fee ? " + cleaning" : ""}</Text></Text>
+          : <Text v="body"><Text v="bodyStrong">{formatNaira(card.price_per_night)}</Text> <Text v="small" color={colors.muted}>a night · sleeps {card.max_guests}</Text></Text>}
       </Pressable>
     </View>
   );

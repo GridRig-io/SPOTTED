@@ -354,3 +354,11 @@ update rooms set status = 'published' where id = '6116a6c7-f13d-4f6f-ae17-f72267
 insert into properties (id, area_id, name, slug, kind, area_hint, status, is_demo) select 'dbc5b84d-4b45-4215-aaea-abeef57323f4', a.id, 'Old Gate Guest House', 'old-gate-guest-house', 'guest_house', 'Off Adetokunbo Ademola Crescent', 'unclaimed', true from areas a where a.slug = 'wuse-2' on conflict (id) do nothing;
 insert into properties (id, area_id, name, slug, kind, area_hint, status, is_demo) select 'b584ad7b-6539-4585-aff7-559eeaec6b41', a.id, 'Sunrise Lodge', 'sunrise-lodge-kubwa', 'guest_house', 'Kubwa Express Road', 'unclaimed', true from areas a where a.slug = 'kubwa' on conflict (id) do nothing;
 insert into properties (id, area_id, name, slug, kind, area_hint, status, is_demo) select 'e0a30dc1-1a59-4427-af4b-3109922723a6', a.id, 'Cedar Court Apartments', 'cedar-court-apo', 'hotel_apartment', 'Apo Legislative Quarters side', 'unclaimed', true from areas a where a.slug = 'apo' on conflict (id) do nothing;
+
+-- Approximate public spots for the demo places (rounded, about 1 km) and matching private pins.
+update properties p set
+  lat = round(a.lat + ((('x' || substr(md5(p.slug), 1, 4))::bit(16)::int % 100) - 50) / 10000.0, 2),
+  lng = round(a.lng + ((('x' || substr(md5(p.slug), 5, 4))::bit(16)::int % 100) - 50) / 10000.0, 2)
+from areas a where a.id = p.area_id and p.is_demo and p.lat is null;
+update property_private pp set lat = p.lat, lng = p.lng, landmark = coalesce(pp.landmark, 'Demo listing: ask the host for the nearest landmark')
+from properties p where p.id = pp.property_id and p.is_demo and pp.lat is null;

@@ -1,7 +1,10 @@
 import { useRouter } from "expo-router";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { listAreas, searchRooms } from "@spotted/core";
+import { listAreas, listStates, searchRooms } from "@spotted/core";
+import { StatePicker } from "@/components/StatePicker";
+import { useChosenState } from "@/lib/chosenState";
+import { openHostTools } from "@/lib/hostLinks";
 import { Icon } from "@/components/Icon";
 import { Logo, PinMark } from "@/components/Logo";
 import { RoomCard } from "@/components/RoomCard";
@@ -21,10 +24,14 @@ const TRUST = [
 export default function Explore() {
   const router = useRouter();
   const { db } = useAuth();
+  const [stateSlug, chooseState] = useChosenState();
   const { data, error, loading, reload } = useLoad(db ? async () => {
-    const [areas, cards] = await Promise.all([listAreas(db), searchRooms(db, {}, 0, 8)]);
-    return { areas, cards };
-  } : null, "explore");
+    const states = await listStates(db);
+    const state = states.find((s) => s.slug === stateSlug) ?? states[0];
+    const [areas, cards] = await Promise.all([listAreas(db, state), searchRooms(db, { state: state?.slug }, 0, 8)]);
+    return { states, state, areas, cards };
+  } : null, `explore|${stateSlug}`);
+  const city = data?.state?.city ?? "Abuja";
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.cream }}>
@@ -34,14 +41,14 @@ export default function Explore() {
           <SafeAreaView edges={["top"]} style={{ gap: 14, paddingTop: 12 }}>
             <Logo height={30} tone="cream" />
             <View style={{ gap: 10, marginTop: 18 }}>
-              <View style={styles.where}><Text v="label" color={colors.cream}>Abuja, Nigeria</Text></View>
               <Text v="display" color={colors.cream} accessibilityRole="header">Places worth staying.</Text>
-              <Text color={colors.sage}>Apartments and guest houses where the power, water, wifi and security are spelled out before you book.</Text>
+              <Text color={colors.sage}>Apartments and guest houses across Nigeria, with the power, water, wifi and security spelled out before you book.</Text>
             </View>
-            <Pressable onPress={() => router.push("/search")} accessibilityRole="search" accessibilityLabel="Search places in Abuja" style={styles.search}>
+            {data ? <StatePicker states={data.states} current={data.state?.slug ?? stateSlug} onChoose={chooseState} tone="dark" /> : null}
+            <Pressable onPress={() => router.push({ pathname: "/search", params: { state: data?.state?.slug ?? stateSlug } })} accessibilityRole="search" accessibilityLabel={`Search places in ${city}`} style={styles.search}>
               <Icon name="search" size={20} color={colors.forest} />
               <View style={{ flex: 1 }}>
-                <Text v="smallStrong">Where to in Abuja?</Text>
+                <Text v="smallStrong">Where to in {city}?</Text>
                 <Text v="caption" color={colors.muted}>Any area · any dates · any guests</Text>
               </View>
               <View style={styles.sliders}><Icon name="sliders-horizontal" size={18} color={colors.cream} /></View>
@@ -65,18 +72,25 @@ export default function Explore() {
           {hasSupabase && data ? (
             <>
               <View style={{ gap: 12 }}>
-                <Text v="h2">Popular areas</Text>
+                <Text v="h2">Popular areas in {city}</Text>
                 <View style={styles.wrap}>
-                  {data.areas.slice(0, 10).map((a) => <Chip key={a.slug} icon="map-pin" label={a.name} onPress={() => router.push({ pathname: "/search", params: { area: a.slug } })} />)}
+                  {data.areas.filter((a) => !a.slug.endsWith("-other")).slice(0, 12).map((a) => <Chip key={a.slug} icon="map-pin" label={a.name} onPress={() => router.push({ pathname: "/search", params: { state: data.state?.slug ?? "", area: a.slug } })} />)}
                 </View>
               </View>
               <View style={{ gap: 16 }}>
                 <View style={styles.rowBetween}>
-                  <Text v="h2">Places to stay now</Text>
-                  <Pressable onPress={() => router.push("/search")} accessibilityRole="link" hitSlop={10}><Text v="smallStrong" color={colors.forest}>See all</Text></Pressable>
+                  <Text v="h2">Places to stay in {city}</Text>
+                  <Pressable onPress={() => router.push({ pathname: "/search", params: { state: data.state?.slug ?? "" } })} accessibilityRole="link" hitSlop={10}><Text v="smallStrong" color={colors.forest}>See all</Text></Pressable>
                 </View>
                 {data.cards.length ? <View style={{ gap: 28 }}>{data.cards.map((c) => <RoomCard key={c.room_id} card={c} />)}</View>
-                  : <Text color={colors.muted}>No places are listed yet. Check back soon.</Text>}
+                  : (
+                    <Card style={{ gap: 10 }}>
+                      <IconBox name="house" />
+                      <Text v="h3">No places in {data.state?.short_name ?? city} yet</Text>
+                      <Text color={colors.muted}>We are just opening here. Own or manage a place in {city}? List it free and be one of the first guests see.</Text>
+                      <Button kind="accent" title="List your place" onPress={() => void openHostTools("/host/start")} style={{ alignSelf: "flex-start" }} />
+                    </Card>
+                  )}
               </View>
             </>
           ) : null}
@@ -84,9 +98,9 @@ export default function Explore() {
           {error && !data ? <Empty icon="triangle-alert" title="We could not load places" action={<Button title="Try again" kind="quiet" onPress={reload} />}>{error}</Empty> : null}
 
           <View style={styles.host}>
-            <Text v="h2" color={colors.cream}>Own a flat or guest house in Abuja?</Text>
-            <Text color={colors.sage}>List it free for your first 2 months. Post at least 5 photos per room, answer 22 plain questions, and guests find you.</Text>
-            <Button kind="accent" title="How hosting works" onPress={() => router.push("/help")} style={{ alignSelf: "flex-start" }} />
+            <Text v="h2" color={colors.cream}>Own a flat, guest house or short-let?</Text>
+            <Text color={colors.sage}>List it free for your first 2 months. Add your rooms and photos, answer 22 plain questions, drop a pin on the map, and guests find you.</Text>
+            <Button kind="accent" title="List your place" onPress={() => void openHostTools("/host/start")} style={{ alignSelf: "flex-start" }} />
           </View>
         </View>
       </ScrollView>
@@ -97,7 +111,6 @@ export default function Explore() {
 const styles = StyleSheet.create({
   hero: { backgroundColor: colors.forest, paddingHorizontal: 20, paddingBottom: 24, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, overflow: "hidden" },
   heroPin: { position: "absolute", right: -60, top: 40, opacity: 0.16 },
-  where: { alignSelf: "flex-start", backgroundColor: "rgba(250,245,233,0.14)", paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.pill },
   search: { backgroundColor: colors.cream, borderRadius: radii.xl, padding: 14, flexDirection: "row", alignItems: "center", gap: 12, marginTop: 6 },
   sliders: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.forest, alignItems: "center", justifyContent: "center" },
   body: { padding: 20, gap: 28 },

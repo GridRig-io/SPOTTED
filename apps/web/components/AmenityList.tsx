@@ -72,3 +72,36 @@ export function AmenityList({ rows }: { rows: RoomAmenityRow[] }) {
     </div>
   );
 }
+
+/**
+ * The short version: what costs extra and what is not offered, in one or two lines.
+ * Everything not listed here is included, and the full 22 sit one tap away, so nothing is ever left grey.
+ */
+export function AmenityExceptions({ rows }: { rows: RoomAmenityRow[] }) {
+  const paid = rows.filter((r) => r.state === "paid");
+  const off = rows.filter((r) => (r.state ?? "not_offered") === "not_offered");
+  const included = rows.length - paid.length - off.length;
+  return (
+    <div className="exceptions">
+      <p className="row gap-2"><Icon name="circle-check" size={18} color="var(--c-forest)" /><span><b>{included} of {rows.length}</b> included in the price</span></p>
+      {paid.length ? (
+        <p className="row gap-2" style={{ alignItems: "flex-start" }}><Icon name="plus" size={18} color="var(--c-orange)" />
+          <span><b>Costs extra:</b> {paid.map((r) => `${r.label}${r.extra_cost_ngn ? ` (${formatNaira(r.extra_cost_ngn)})` : ""}`).join(", ")}</span></p>
+      ) : null}
+      {off.length ? (
+        <p className="row gap-2" style={{ alignItems: "flex-start" }}><Icon name="ban" size={18} color="var(--c-muted)" />
+          <span><b>Not offered:</b> {off.map((r) => r.label).join(", ")}</span></p>
+      ) : null}
+    </div>
+  );
+}
+
+/** "See all 22 answers": native disclosure, works without JavaScript and with screen readers. */
+export function AmenityDetails({ rows }: { rows: RoomAmenityRow[] }) {
+  return (
+    <details className="amen-details">
+      <summary className="btn btn-quiet"><span>See all {rows.length} answers</span><Icon name="chevron-down" size={18} /></summary>
+      <div style={{ marginTop: 16 }}><AmenityList rows={rows} /></div>
+    </details>
+  );
+}

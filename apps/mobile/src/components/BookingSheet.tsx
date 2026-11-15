@@ -2,7 +2,7 @@ import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { createBooking, formatDay, formatNaira, nightsBetween, plural, quoteStay, type BlockedRange, type Quote } from "@spotted/core";
+import { cancellationLine, createBooking, formatDay, formatNaira, nightsBetween, plural, quoteStay, type BlockedRange, type CancellationPolicy, type Quote } from "@spotted/core";
 import { colors, radii } from "@/theme";
 import { useLoad } from "@/lib/useLoad";
 import { useAuth } from "@/providers/AuthProvider";
@@ -16,6 +16,7 @@ interface Props {
   visible: boolean; onClose: () => void; nextPath: (v: { checkIn: string; checkOut: string; guests: number }) => string;
   roomId: string; price: number; maxGuests: number; minNights: number; maxNights: number; blocked: BlockedRange[];
   checkIn: string; checkOut: string; guests: number; onChange: (v: { checkIn: string; checkOut: string; guests: number }) => void;
+  policy?: CancellationPolicy;
 }
 
 /** Dates, guests, a server-calculated price, then reserve. The price shown is always the one the database will charge. */
@@ -27,7 +28,8 @@ export function BookingSheet(p: Props) {
   );
 }
 
-function Body({ onClose, nextPath, roomId, price, maxGuests, minNights, maxNights, blocked, checkIn, checkOut, guests, onChange }: Props) {
+function Body({ onClose, nextPath, roomId, price, maxGuests, minNights, maxNights, blocked, checkIn, checkOut, guests, onChange, policy = "moderate" }: Props) {
+  const cancel = cancellationLine(policy, checkIn || null);
   const router = useRouter();
   const { db, user, ready } = useAuth();
   const [picking, setPicking] = useState(false);
@@ -106,6 +108,10 @@ function Body({ onClose, nextPath, roomId, price, maxGuests, minNights, maxNight
         ) : null}
       </ScrollView>
       <View style={styles.foot}>
+        <View style={{ flexDirection: "row", gap: 6, alignItems: "center", marginBottom: 10 }}>
+          <Icon name={cancel.free ? "circle-check" : "info"} size={16} color={cancel.free ? colors.forest : colors.muted} />
+          <Text v="smallStrong" color={cancel.free ? colors.forest : colors.muted} style={{ flex: 1 }}>{cancel.text}</Text>
+        </View>
         <Button kind="accent" disabled={!canReserve && Boolean(user)} busy={busy} onPress={reserve}
           title={user || !ready ? (n ? "Reserve" : "Choose your dates") : "Sign in to reserve"} />
         <View style={{ flexDirection: "row", gap: 6, alignItems: "center", marginTop: 8 }}>

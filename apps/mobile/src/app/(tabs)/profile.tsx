@@ -7,6 +7,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { Screen } from "@/components/Screen";
 import { Alert, Button, Card, Field, Text } from "@/components/ui";
 import { useAuth } from "@/providers/AuthProvider";
+import { openHostTools } from "@/lib/hostLinks";
 import { colors } from "@/theme";
 
 export default function Profile() {
@@ -62,7 +63,15 @@ function Inner() {
             <Icon name={l.icon} size={20} /><Text style={{ flex: 1 }}>{l.t}</Text><Icon name="chevron-right" size={18} color={colors.muted} />
           </Pressable>
         ))}
-        {role === "owner" ? <Text v="small" color={colors.muted} style={{ paddingTop: 8 }}>You are a host. The host dashboard is coming in the next release.</Text> : null}
+      </Card>
+      <Card onPress={() => void openHostTools(role === "owner" || role === "admin" ? "/host/dashboard" : "/host/start")} accessibilityLabel={role === "owner" || role === "admin" ? "Open host dashboard" : "List your place"}
+        style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: role === "owner" || role === "admin" ? colors.mist : colors.white }}>
+        <Icon name={role === "owner" || role === "admin" ? "layout-dashboard" : "house"} size={22} color={colors.forest} />
+        <View style={{ flex: 1 }}>
+          <Text v="bodyStrong">{role === "owner" || role === "admin" ? "Host dashboard" : "List your place"}</Text>
+          <Text v="small" color={colors.muted}>{role === "owner" || role === "admin" ? "Listings, bookings and calendar" : "Free for your first 2 months"}</Text>
+        </View>
+        <Icon name="external-link" size={18} color={colors.muted} />
       </Card>
       <Button kind="quiet" icon="log-out" title="Sign out" onPress={() => void signOut()} />
     </View>

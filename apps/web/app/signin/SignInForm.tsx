@@ -36,7 +36,7 @@ export function SignInForm() {
       } else {
         const email = value.trim().toLowerCase();
         if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Enter a valid email address.");
-        await sendEmailCode(db, email); setSentTo(email);
+        await sendEmailCode(db, email, `${window.location.origin}${next}`); setSentTo(email);
       }
     } catch (x) { setErr(x instanceof Error ? x.message : "Could not send the code."); }
     setBusy(false);
@@ -62,7 +62,7 @@ export function SignInForm() {
     <div className="container section" style={{ maxWidth: 460 }}>
       <div className="card pad stack gap-4">
         <Logo height={36} />
-        <div className="stack gap-1"><h2>Sign in or create an account</h2><p className="muted small">We will text or email you a 6-digit code. No password to remember.</p></div>
+        <div className="stack gap-1"><h2>Sign in or create an account</h2><p className="muted small">We will text you a code or email you a sign-in link. No password to remember.</p></div>
 
         {!sentTo ? (
           <form className="stack gap-4" onSubmit={send}>
@@ -81,7 +81,7 @@ export function SignInForm() {
           </form>
         ) : (
           <form className="stack gap-4" onSubmit={verify}>
-            <p>We sent a code to <b>{sentTo}</b>.</p>
+            <p>{mode === "email" ? <>We emailed <b>{sentTo}</b>. Tap the sign-in link in that email, or type the 6-digit code if it has one.</> : <>We sent a code to <b>{sentTo}</b>.</>}</p>
             <div className="field"><label htmlFor="si-c">6-digit code</label>
               <input id="si-c" className="input" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} autoFocus required style={{ letterSpacing: ".4em", fontWeight: 700, fontSize: 20 }} /></div>
             {err ? <p className="alert" role="alert">{err}</p> : null}

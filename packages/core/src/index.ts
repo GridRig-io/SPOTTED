@@ -5,3 +5,6 @@ export { createSpottedClient, type Db, type ClientOptions } from "./client";
 export * from "./phone";
 export * from "./api";
 export * from "./content";
+export * from "./policy";
+export * from "./geo";
+export * from "./host";

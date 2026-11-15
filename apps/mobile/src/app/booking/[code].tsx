@@ -1,8 +1,8 @@
 import * as Clipboard from "expo-clipboard";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { Alert as NativeAlert, Linking, Pressable, StyleSheet, View } from "react-native";
-import { cancelBooking, formatNaira, formatRange, formatTime, getBooking, getPrivateDetails, plural, todayInLagos } from "@spotted/core";
+import { Alert as NativeAlert, Linking, Platform, Pressable, StyleSheet, View } from "react-native";
+import { POLICIES, appleDirectionsUrl, cancelBooking, formatDay, formatNaira, formatRange, formatTime, freeCancelUntil, getBooking, getPrivateDetails, googleDirectionsUrl, plural, refundableToday, todayInLagos } from "@spotted/core";
 import { Icon } from "@/components/Icon";
 import { PinMark } from "@/components/Logo";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -39,8 +39,10 @@ function Inner({ code }: { code: string }) {
   const confirmed = b.status === "confirmed" || b.status === "completed";
   const upcoming = b.check_in > todayInLagos();
 
+  const pol = b.property?.cancellation_policy ?? "moderate";
+  const refundable = refundableToday(pol, b.check_in);
   function cancel() {
-    NativeAlert.alert("Cancel this booking?", "Refunds follow the host's cancellation terms.", [
+    NativeAlert.alert("Cancel this booking?", refundable ? `You get a full refund of ${formatNaira(b!.total_ngn)}, usually within 5 to 10 working days.` : `This is past the free cancellation date, so the ${formatNaira(b!.total_ngn)} is not refunded. You can still cancel to free the dates.`, [
       { text: "Keep booking", style: "cancel" },
       { text: "Cancel booking", style: "destructive", onPress: () => { if (db) cancelBooking(db, code).then(reload).catch((e: Error) => setErr(e.message)); } },
     ]);
@@ -83,18 +85,33 @@ function Inner({ code }: { code: string }) {
 
       {confirmed ? (
         <Card style={{ gap: 12 }}>
-          <Text v="h3">Getting in</Text>
+          <Text v="h3">Getting there</Text>
           {priv ? (
-            <View style={{ gap: 10 }}>
+            <View style={{ gap: 12 }}>
+              {priv.lat != null && priv.lng != null ? (
+                <View style={{ gap: 8 }}>
+                  <Button kind="accent" icon="navigation" title="Get directions" onPress={() => void Linking.openURL(googleDirectionsUrl({ lat: Number(priv.lat), lng: Number(priv.lng) }))} />
+                  {Platform.OS === "ios" ? <Button kind="quiet" title="Open in Apple Maps" onPress={() => void Linking.openURL(appleDirectionsUrl({ lat: Number(priv.lat), lng: Number(priv.lng) }, b.property?.name))} /> : null}
+                </View>
+              ) : <Text v="small" color={colors.muted}>The host has not dropped an exact pin yet. Use the address and landmark below, or call them.</Text>}
               {priv.street_address ? <Row icon="map-pin" text={priv.street_address} /> : null}
+              {priv.landmark ? <Row icon="landmark" text={`Landmark: ${priv.landmark}`} /> : null}
+              {priv.directions_note ? <Row icon="navigation" text={priv.directions_note} /> : null}
               {priv.gate_instructions ? <Row icon="door-closed" text={priv.gate_instructions} /> : null}
               {priv.wifi_name ? <Row icon="wifi" text={`${priv.wifi_name}${priv.wifi_password ? ` · password ${priv.wifi_password}` : ""}`} /> : null}
-              {priv.host_phone ? <Pressable onPress={() => void Linking.openURL(`tel:${priv.host_phone}`)} accessibilityRole="link" style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><Icon name="message-circle" size={18} /><Text v="smallStrong" color={colors.forest}>Call host: {priv.host_phone}</Text></Pressable> : null}
+              {priv.host_phone ? <Pressable onPress={() => void Linking.openURL(`tel:${priv.host_phone}`)} accessibilityRole="link" style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><Icon name="phone" size={18} /><Text v="smallStrong" color={colors.forest}>Call the host: {priv.host_phone}</Text></Pressable> : null}
             </View>
-          ) : <Text color={colors.muted}>{upcoming ? "The exact address, gate instructions and wifi password appear here from the day before your stay. We keep them private until then." : "Details are not available."}</Text>}
+          ) : <Text color={colors.muted}>{upcoming ? "From the day before check-in, this shows the exact pin with Get directions, the street address, a landmark, gate notes and wifi. We keep them private until then." : "Details are not available."}</Text>}
         </Card>
       ) : null}
 
+      {b.property ? (
+        <Card style={{ gap: 6 }}>
+          <Text v="h3">Cancellation · {POLICIES[pol].label}</Text>
+          <Text color={colors.muted}>{POLICIES[pol].long}</Text>
+          {b.status === "confirmed" && upcoming ? <Text v="smallStrong" color={refundable ? colors.forest : colors.red}>{refundable ? `Free cancellation until ${formatDay(freeCancelUntil(pol, b.check_in))}.` : "If you cancel now, this stay is not refunded."}</Text> : null}
+        </Card>
+      ) : null}
       {b.status === "confirmed" && upcoming ? <Button kind="quiet" title="Cancel booking" onPress={cancel} /> : null}
       <Button kind="quiet" title="See all your trips" onPress={() => router.replace("/trips")} />
     </View>

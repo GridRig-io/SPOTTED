@@ -12,8 +12,8 @@ export default function Help() {
       <section className="stack gap-3">{FAQ.map(([q, a]) => <details key={q} className="card pad"><summary className="bold" style={{ cursor: "pointer" }}>{q}</summary><p className="muted" style={{ marginTop: 10 }}>{a}</p></details>)}</section>
       <section id="hosts" className="stack gap-3">
         <h2>Hosting on Spotted</h2>
-        <p>List a flat or guest house in Abuja. Your first 2 months are free. To publish a room you post at least 5 photos of that room and answer all {AMENITY_COUNT} amenity questions, so guests know what to expect.</p>
-        <p className="muted">Host tools (dashboard, calendar, your own website address) are being built. To register interest, email <a className="bold" href="mailto:help@spotted.ng">help@spotted.ng</a>.</p>
+        <p>List a flat, guest house or short-let in any state we cover. Your first 2 months are free. Each room needs at least 5 photos and answers to all {AMENITY_COUNT} amenity questions, and you drop an exact pin so guests can find you. A Spotted reviewer checks every listing before it goes live.</p>
+        <div className="row wrap gap-2"><Link href="/host/start" className="btn btn-accent">List your place</Link><Link href="/host" className="btn btn-quiet">How hosting works</Link></div>
       </section>
       <section id="claim" className="stack gap-3">
         <h2>Claim a listing</h2>
